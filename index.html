@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lab Rasio & Pecahan - Sensor Gerak Interaktif</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- MediaPipe Hands for Real Hand Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-pink: #ff007f;
+            --neon-green: #00ff66;
+            --neon-amber: #ffaa00;
+        }
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #060b19;
+            color: #ffffff;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        .font-cyber {
+            font-family: 'Orbitron', sans-serif;
+        }
+        /* Grid Background Effect */
+        .cyber-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 243, 255, 0.07) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 243, 255, 0.07) 1px, transparent 1px);
+        }
+        /* Glowing Borders & Shadows */
+        .neon-box {
+            background: rgba(13, 22, 45, 0.85);
+            border: 2px solid rgba(0, 243, 255, 0.4);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.15), inset 0 0 15px rgba(0, 243, 255, 0.1);
+            backdrop-filter: blur(8px);
+        }
+        .neon-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .neon-btn:hover, .neon-btn.sensor-hover {
+            transform: scale(1.04);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.5);
+        }
+        .neon-btn:active, .neon-btn.sensor-active {
+            transform: scale(0.96);
+        }
+        /* Scanline Animation for Sensor HUD */
+        .scanline {
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(to right, transparent, var(--neon-cyan), transparent);
+            opacity: 0.6;
+            animation: scan 3s linear infinite;
+        }
+        @keyframes scan {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(140px); }
+            100% { transform: translateY(0); }
+        }
+        /* Virtual Hand Cursor */
+        #virtual-cursor {
+            pointer-events: none;
+            position: fixed;
+            top: -100px;
+            left: -100px;
+            width: 64px;
+            height: 64px;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            transition: width 0.15s, height 0.15s;
+        }
+        .cursor-ring {
+            width: 100%;
+            height: 100%;
+            border: 3px dashed var(--neon-cyan);
+            border-radius: 50%;
+            animation: spin 4s linear infinite;
+            box-shadow: 0 0 15px var(--neon-cyan);
+        }
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+        /* Liquid Animation for Beakers */
+        .liquid {
+            transition: height 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+        }
+        .liquid::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+        }
+        /* Mirror video & canvas */
+        .mirror-view {
+            transform: scaleX(-1);
+        }
+
+        /* Splash Screen Animation */
+        @keyframes splashZoom {
+            0% { transform: scale(0.85); opacity: 0; }
+            20% { transform: scale(1); opacity: 1; }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.1); opacity: 0; }
+        }
+        .splash-content {
+            animation: splashZoom 6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col justify-between cyber-grid relative overflow-hidden">
+
+    <!-- ================= A. SPLASH SCREEN (INTRO) ================= -->
+    <div id="splash-screen" class="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6 text-center select-none">
+        <div class="splash-content max-w-2xl flex flex-col items-center gap-4">
+            <div class="w-24 h-24 rounded-3xl bg-cyan-600 flex items-center justify-center shadow-xl text-white text-4xl mb-2">
+                <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            <h1 class="text-3xl md:text-5xl font-extrabold text-slate-900 tracking-tight font-cyber">
+                CYBER-RATIO LAB
+            </h1>
+            <p class="text-slate-600 text-sm md:text-base font-medium">
+                Laboratorium Interaktif Matematika Nusantara
+            </p>
+            <div class="mt-6 p-4 rounded-2xl bg-slate-100 border border-slate-200 shadow-inner w-full">
+                <p class="text-xs uppercase tracking-widest text-cyan-700 font-bold mb-1">Dibuat Oleh:</p>
+                <h3 class="text-xl md:text-2xl font-black text-slate-900">SUCI MEGA DIAN SARI</h3>
+                <p class="text-sm font-semibold text-purple-700 mt-1">Duta Teknologi Kemendikdasmen Prov. Banten</p>
+            </div>
+            <div class="text-xs text-slate-400 mt-4 animate-pulse">Memuat sistem sensor interaktif...</div>
+        </div>
+    </div>
+
+    <!-- Particle & Touch Sensor Effect Canvas -->
+    <canvas id="fx-canvas" class="fixed inset-0 pointer-events-none z-40"></canvas>
+
+    <!-- Virtual Sensor Cursor -->
+    <div id="virtual-cursor" class="flex items-center justify-center">
+        <div class="cursor-ring absolute"></div>
+        <svg class="w-full h-full absolute -rotate-90" viewBox="0 0 36 36">
+            <path id="dwell-circle" class="text-green-400" stroke-dasharray="0, 100" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+        </svg>
+        <div id="cursor-dot" class="w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#00f3ff]"></div>
+    </div>
+
+    <!-- ================= TOP BAR / HUD ================= -->
+    <header class="w-full px-3 py-2 md:px-6 md:py-3 flex flex-wrap items-center justify-between gap-2 z-30 bg-slate-950/80 border-b border-cyan-500/30 backdrop-blur-md">
+        <!-- Brand / Title -->
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(0,243,255,0.4)]">
+                <i class="fa-solid fa-flask-vial text-xl md:text-2xl animate-pulse"></i>
+            </div>
+            <div>
+                <h1 class="font-cyber text-sm md:text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-teal-200 to-purple-400">
+                    LAB RASIO & PECAHAN
+                </h1>
+                <div class="flex items-center gap-2 text-xs text-cyan-400/80">
+                    <span id="sensor-status-dot" class="w-2 h-2 rounded-full bg-green-400 animate-ping"></span>
+                    <span id="sensor-status-text">Sensor Sentuh & Gerak Aktif</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Score, Streak & Mode Controls -->
+        <div class="flex items-center gap-2 md:gap-4">
+            <!-- Stats -->
+            <div class="neon-box px-3 py-1.5 rounded-xl flex items-center gap-4 text-xs md:text-sm">
+                <div class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-star text-amber-400"></i>
+                    <span class="text-slate-300">Skor:</span>
+                    <span id="score-display" class="font-cyber font-bold text-amber-300 text-sm md:text-base">0</span>
+                </div>
+                <div class="h-4 w-[1px] bg-cyan-500/30"></div>
+                <div class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-bolt text-pink-400"></i>
+                    <span class="text-slate-300">Level:</span>
+                    <span id="level-display" class="font-cyber font-bold text-cyan-300 text-sm md:text-base">1/10</span>
+                </div>
+            </div>
+
+            <!-- Toggle Camera Hand Sensor Button -->
+            <button id="btn-toggle-cam" onclick="toggleCameraSensor()" class=" interactive-target neon-btn px-3 py-2 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-800 border border-purple-400 text-xs md:text-sm font-semibold flex items-center gap-2 shadow-lg">
+                <i id="cam-icon" class="fa-solid fa-hand-sparkles text-cyan-300"></i>
+                <span id="cam-btn-text" class="hidden sm:inline">Aktifkan Sensor Kamera AI</span>
+                <span class="sm:hidden">Sensor AI</span>
+            </button>
+
+            <!-- Audio Toggle -->
+            <button id="btn-audio" onclick="toggleAudio()" class="interactive-target neon-btn w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-800 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                <i id="audio-icon" class="fa-solid fa-volume-high"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ================= MAIN GAMEPLAY AREA ================= -->
+    <main class="flex-1 w-full max-w-7xl mx-auto p-3 md:p-6 flex flex-col lg:flex-row gap-4 items-center justify-center relative z-20 overflow-y-auto lg:overflow-hidden">
+
+        <!-- INITIAL POP-UP & START SCREEN OVERLAY -->
+        <div id="start-screen" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4">
+            <div class="neon-box max-w-2xl w-full p-6 md:p-8 rounded-3xl text-center flex flex-col items-center gap-5 border-2 border-cyan-400 relative overflow-hidden">
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center shadow-[0_0_30px_rgba(0,243,255,0.6)]">
+                    <i class="fa-solid fa-hand-point-up text-4xl text-white animate-bounce"></i>
+                </div>
+                
+                <div>
+                    <span class="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400 text-cyan-300 text-xs font-cyber uppercase tracking-widest">EduGame Interaktif Peserta Didik</span>
+                    <h2 class="text-2xl md:text-4xl font-bold mt-2 text-white">Misi Laboratorium Rasio & Pecahan</h2>
+                    <p class="text-slate-300 text-sm md:text-base mt-2 max-w-xl mx-auto">
+                        Racik ramuan cairan bercahaya dan pecahkan kristal energi menggunakan perbandingan <strong>Rasio (a : b)</strong> dan <strong>Pecahan (a/b)</strong>!
+                    </p>
+                </div>
+
+                <!-- Sensor Explanation Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 w-full text-left text-xs md:text-sm">
+                    <div class="bg-slate-900/90 border border-purple-500/40 p-3.5 rounded-2xl flex items-start gap-3">
+                        <div class="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 text-xl">
+                            <i class="fa-solid fa-video"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-purple-300">Mode Sensor Kamera AI</h4>
+                            <p class="text-slate-400 mt-0.5">Gerakkan telunjuk di depan kamera. <strong>Tahan kursor 1.2 detik</strong> pada tombol untuk menekan.</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-cyan-500/40 p-3.5 rounded-2xl flex items-start gap-3">
+                        <div class="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 text-xl">
+                            <i class="fa-solid fa-chalkboard-user"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-cyan-300">Papan Interaktif / Tablet / HP</h4>
+                            <p class="text-slate-400 mt-0.5">Sentuh atau geser langsung di layar. Dilengkapi radar sensor visual yang merespons setiap gerakan jari.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode Selection Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3 w-full justify-center mt-2">
+                    <button onclick="startGame(false)" class="interactive-target neon-btn flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-base md:text-lg shadow-[0_0_20px_rgba(0,243,255,0.4)] flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-fingerprint text-xl"></i>
+                        Mulai (Sentuh / Papan Digital)
+                    </button>
+                    <button onclick="startGame(true)" class="interactive-target neon-btn flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-base md:text-lg shadow-[0_0_20px_rgba(255,0,127,0.4)] flex items-center justify-center gap-2 border border-pink-400">
+                        <i class="fa-solid fa-camera-retro text-xl"></i>
+                        Mulai + Sensor Gerak Kamera
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEFT COLUMN: MISSION & VISUALIZATION -->
+        <div class="w-full lg:w-7/12 flex flex-col gap-4">
+            <!-- Mission Prompt Box -->
+            <div class="neon-box p-4 md:p-6 rounded-3xl relative overflow-hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <span id="mission-badge" class="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 text-xs font-cyber uppercase">
+                        Misi 1: Campuran Rasio
+                    </span>
+                    <button onclick="showHint()" class="interactive-target neon-btn px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs flex items-center gap-1.5">
+                        <i class="fa-solid fa-lightbulb"></i> Bantuan Konsep
+                    </button>
+                </div>
+                <h2 id="question-title" class="text-lg md:text-2xl font-bold text-white leading-snug">
+                    Memuat soal laboratorium...
+                </h2>
+                <p id="question-subtitle" class="text-xs md:text-sm text-cyan-200/80 mt-1">
+                    Gunakan gerakan tangan atau sentuh tombol untuk meracik takaran yang pas!
+                </p>
+                <!-- Hint Box (Hidden by default) -->
+                <div id="hint-box" class="hidden mt-3 p-3 rounded-xl bg-amber-950/70 border border-amber-400/50 text-amber-200 text-xs md:text-sm"></div>
+            </div>
+
+            <!-- Interactive Lab Workspace (Dynamic based on Mode) -->
+            <div id="workspace-mixer" class="neon-box p-4 md:p-6 rounded-3xl flex flex-col items-center justify-center min-h-[250px] md:min-h-[300px]">
+                
+                <!-- Sub-view A: Potion Beakers (For Mixing Mode) -->
+                <div id="view-beakers" class="w-full flex flex-col md:flex-row items-center justify-around gap-6">
+                    <!-- Beaker A (Blue) -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-xs md:text-sm font-bold text-cyan-300 tracking-wide">CAIRAN BIRU (A)</span>
+                        <div class="flex items-center gap-3">
+                            <button onclick="adjustPotion('blue', -1)" class="interactive-target neon-btn w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-slate-800 border-2 border-cyan-400 text-cyan-300 text-xl md:text-2xl font-bold flex items-center justify-center">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <!-- Beaker Tube -->
+                            <div class="w-20 h-36 md:w-24 md:h-44 rounded-b-3xl rounded-t-lg border-4 border-slate-300 bg-slate-900/90 relative overflow-hidden flex flex-col justify-end p-1 shadow-[0_0_20px_rgba(0,243,255,0.2)]">
+                                <!-- Measurement lines -->
+                                <div class="absolute inset-0 flex flex-col justify-between py-2 px-1 pointer-events-none opacity-30 z-10">
+                                    <div class="border-b border-white w-4"></div>
+                                    <div class="border-b border-white w-6"></div>
+                                    <div class="border-b border-white w-4"></div>
+                                    <div class="border-b border-white w-6"></div>
+                                    <div class="border-b border-white w-4"></div>
+                                </div>
+                                <div id="liquid-blue" class="liquid w-full bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-b-2xl shadow-[0_0_15px_#00f3ff]" style="height: 20%;"></div>
+                                <span id="val-blue" class="absolute inset-0 flex items-center justify-center font-cyber text-2xl md:text-3xl font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] z-20">1</span>
+                            </div>
+                            <button onclick="adjustPotion('blue', 1)" class="interactive-target neon-btn w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-cyan-600/30 border-2 border-cyan-400 text-cyan-200 text-xl md:text-2xl font-bold flex items-center justify-center">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ratio Live Indicator -->
+                    <div class="flex flex-col items-center justify-center bg-slate-900/90 px-4 py-3 rounded-2xl border border-slate-700">
+                        <span class="text-[10px] md:text-xs text-slate-400 uppercase tracking-widest">Rasio Saat Ini</span>
+                        <div class="font-cyber text-xl md:text-2xl font-bold text-white mt-1">
+                            <span id="live-ratio-text" class="text-cyan-300">1 : 1</span>
+                        </div>
+                        <div class="text-xs text-pink-300 mt-1">
+                            Pecahan Biru: <strong id="live-frac-text">1/2</strong>
+                        </div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">
+                            Total Bagian: <strong id="live-total-text">2</strong>
+                        </div>
+                    </div>
+
+                    <!-- Beaker B (Pink) -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-xs md:text-sm font-bold text-pink-400 tracking-wide">CAIRAN MERAH MUDA (B)</span>
+                        <div class="flex items-center gap-3">
+                            <button onclick="adjustPotion('pink', -1)" class="interactive-target neon-btn w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-slate-800 border-2 border-pink-500 text-pink-400 text-xl md:text-2xl font-bold flex items-center justify-center">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <!-- Beaker Tube -->
+                            <div class="w-20 h-36 md:w-24 md:h-44 rounded-b-3xl rounded-t-lg border-4 border-slate-300 bg-slate-900/90 relative overflow-hidden flex flex-col justify-end p-1 shadow-[0_0_20px_rgba(255,0,127,0.2)]">
+                                <div class="absolute inset-0 flex flex-col justify-between py-2 px-1 pointer-events-none opacity-30 z-10">
+                                    <div class="border-b border-white w-4"></div>
+                                    <div class="border-b border-white w-6"></div>
+                                    <div class="border-b border-white w-4"></div>
+                                    <div class="border-b border-white w-6"></div>
+                                    <div class="border-b border-white w-4"></div>
+                                </div>
+                                <div id="liquid-pink" class="liquid w-full bg-gradient-to-t from-pink-600 to-rose-400 rounded-b-2xl shadow-[0_0_15px_#ff007f]" style="height: 20%;"></div>
+                                <span id="val-pink" class="absolute inset-0 flex items-center justify-center font-cyber text-2xl md:text-3xl font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] z-20">1</span>
+                            </div>
+                            <button onclick="adjustPotion('pink', 1)" class="interactive-target neon-btn w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-pink-600/30 border-2 border-pink-500 text-pink-200 text-xl md:text-2xl font-bold flex items-center justify-center">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-view B: Visual Fraction Grid (For Multiple Choice Target Mode) -->
+                <div id="view-visual-grid" class="hidden w-full flex-col items-center gap-4">
+                    <span class="text-xs text-cyan-300 uppercase tracking-wider font-cyber">Visualisasi Energi Kristal</span>
+                    <div id="crystal-container" class="flex flex-wrap items-center justify-center gap-2.5 max-w-md p-4 rounded-2xl bg-slate-900/80 border border-cyan-500/30">
+                        <!-- Dynamically populated crystals -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: ACTION / TARGET ORBS & SENSOR CAMERA HUD -->
+        <div class="w-full lg:w-5/12 flex flex-col gap-4">
+            
+            <!-- Action / Answer Panel -->
+            <div class="neon-box p-4 md:p-6 rounded-3xl flex flex-col justify-between">
+                <h3 id="action-panel-title" class="font-cyber text-xs md:text-sm uppercase tracking-wider text-cyan-300 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-crosshairs"></i> Panel Eksekusi Sensor
+                </h3>
+
+                <!-- Submit Button for Beaker Mixer Mode -->
+                <div id="panel-submit-mix" class="w-full">
+                    <button onclick="checkBeakerAnswer()" class="interactive-target neon-btn w-full py-4 md:py-5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 border-2 border-emerald-300 text-white font-bold text-base md:text-xl shadow-[0_0_25px_rgba(16,185,129,0.4)] flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-flask text-2xl"></i>
+                        UJI CAMPURAN RASIO!
+                    </button>
+                </div>
+
+                <!-- 4 Target Orbs for Multiple Choice Mode -->
+                <div id="panel-choice-orbs" class="hidden grid-cols-2 gap-3 w-full">
+                    <!-- Populated via JS -->
+                </div>
+
+                <!-- Feedback Banner -->
+                <div id="feedback-banner" class="hidden mt-3 p-3 rounded-2xl text-center font-bold text-sm md:text-base transition-all"></div>
+            </div>
+
+            <!-- SENSOR CAMERA & MOTION RADAR HUD -->
+            <div class="neon-box p-3 md:p-4 rounded-3xl flex flex-col gap-2 relative overflow-hidden">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="font-cyber text-cyan-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-satellite-dish animate-pulse"></i> MONITOR SENSOR GERAK
+                    </span>
+                    <span id="gesture-badge" class="px-2 py-0.5 rounded bg-slate-800 text-cyan-400 font-mono text-[11px]">
+                        Mode: Layar Sentuh / Kursor
+                    </span>
+                </div>
+
+                <!-- Camera / Radar Viewport -->
+                <div class="w-full h-36 md:h-44 rounded-2xl bg-slate-950 border border-cyan-500/40 relative overflow-hidden flex items-center justify-center">
+                    <div class="scanline absolute top-0 left-0 z-20 pointer-events-none"></div>
+                    
+                    <!-- Hidden Video Element for MediaPipe -->
+                    <video id="webcam-video" class="hidden playsinline"></video>
+                    
+                    <!-- Output Canvas showing Camera + Hand Skeleton OR Radar Simulation -->
+                    <canvas id="sensor-hud-canvas" class="w-full h-full object-cover mirror-view"></canvas>
+
+                    <!-- Overlay Info when Camera is Off -->
+                    <div id="radar-overlay-info" class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center pointer-events-none bg-slate-950/60">
+                        <i class="fa-solid fa-hand-dots text-2xl text-cyan-400/70 mb-1"></i>
+                        <p class="text-xs text-slate-300 max-w-xs">
+                            Sensor Melacak Sentuhan & Gerakan.<br>
+                            <span class="text-cyan-400">Klik "Sensor AI" di atas</span> jika ingin menggunakan Kamera Tanpa Sentuh!
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ================= VICTORY / END MODAL ================= -->
+    <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-lg flex items-center justify-center p-4">
+        <div class="neon-box max-w-lg w-full p-6 md:p-8 rounded-3xl text-center flex flex-col items-center gap-4 border-2 border-emerald-400">
+            <div class="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-300 text-4xl shadow-[0_0_30px_#00ff66]">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-bold text-white">Eksperimen Selesai!</h2>
+            <p class="text-slate-300 text-sm md:text-base">
+                Luar biasa! Kamu telah menguasai materi <strong>Rasio dan Pecahan</strong> melalui laboratorium sensor interaktif.
+            </p>
+            <div class="bg-slate-900/90 border border-cyan-500/40 rounded-2xl p-4 w-full flex justify-around">
+                <div>
+                    <div class="text-xs text-slate-400">Total Skor</div>
+                    <div id="final-score" class="font-cyber text-2xl md:text-3xl font-bold text-amber-400">100</div>
+                </div>
+                <div class="border-r border-slate-700"></div>
+                <div>
+                    <div class="text-xs text-slate-400">Predikat Ilmuwan</div>
+                    <div id="final-rank" class="font-cyber text-lg md:text-xl font-bold text-cyan-300 mt-1">Master Rasio</div>
+                </div>
+            </div>
+            <button onclick="resetGame()" class="interactive-target neon-btn w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-lg shadow-lg mt-2">
+                <i class="fa-solid fa-rotate-right mr-2"></i> Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- ================= JAVASCRIPT LOGIC ================= -->
+    <script>
+        /**************************************************************
+         * 1. SPLASH SCREEN & AUDIO SYNTHESIS
+         **************************************************************/
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splash-screen');
+                if (splash) {
+                    splash.style.transition = 'opacity 0.8s ease';
+                    splash.style.opacity = '0';
+                    setTimeout(() => splash.remove(), 800);
+                }
+            }, 6000); // 6 Seconds duration
+        });
+
+        let audioCtx = null;
+        let soundEnabled = true;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playTone(freq, type = 'sine', duration = 0.15, vol = 0.15) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('audio-icon');
+            icon.className = soundEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark text-pink-400';
+            if (soundEnabled) playTone(587.33, 'sine', 0.2);
+        }
+
+        /**************************************************************
+         * 2. GAME QUESTION BANK & DATA
+         **************************************************************/
+        const questions = [
+            {
+                type: 'mix',
+                badge: 'Misi 1: Rasio Pecahan Dasar',
+                title: `Raciklah cairan agar rasio Volume Biru dan Pink bernilai <strong>1 : 2</strong> !`,
+                subtitle: `Gunakan tombol + / - atau gerakan sensor untuk menyesuaikan takaran cairan.`,
+                targetRatio: [1, 2],
+                hint: `Rasio 1 : 2 artinya bagian Biru bernilai 1 satuan dan Pink bernilai 2 satuan.`
+            },
+            {
+                type: 'choice',
+                badge: 'Misi 2: Menyederhanakan Pecahan',
+                title: `Berapakah bentuk paling sederhana dari rasio pecahan <strong><sup>3</sup>/<sub>4</sub> : <sup>1</sup>/<sub>4</sub></strong> ?`,
+                subtitle: `Pilih kristal jawaban yang tepat di panel eksekusi kanan!`,
+                options: ['1 : 3', '3 : 1', '3 : 4', '4 : 3'],
+                correctIndex: 1,
+                hint: `Kalikan kedua pecahan dengan penyebut yang sama (4), sehingga didapat 3 : 1.`
+            },
+            {
+                type: 'mix',
+                badge: 'Misi 3: Perbandingan Setara',
+                title: `Raciklah perbandingan cairan agar rasio menjadi <strong>3 : 2</strong> !`,
+                subtitle: `Sesuaikan takaran beker biru dan pink.`,
+                targetRatio: [3, 2],
+                hint: `Atur cairan biru menjadi 3 unit dan cairan pink menjadi 2 unit.`
+            },
+            {
+                type: 'choice',
+                badge: 'Misi 4: Rasio Beda Penyebut',
+                title: `Tentukan rasio paling sederhana dari <strong><sup>2</sup>/<sub>3</sub> : <sup>1</sup>/<sub>2</sub></strong> !`,
+                subtitle: `Pilih jawaban pada kristal sensor energi.`,
+                options: ['3 : 4', '4 : 3', '2 : 3', '3 : 2'],
+                correctIndex: 1,
+                hint: `Gunakan KPK dari 3 dan 2 yaitu 6. (2/3 x 6) : (1/2 x 6) = 4 : 3.`
+            },
+            {
+                type: 'mix',
+                badge: 'Misi 5: Kalibrasi Larutan 2:3',
+                title: `Tentukan takaran larutan agar rasionya tepat <strong>2 : 3</strong> !`,
+                subtitle: `Sesuaikan beker cairan biru dan pink.`,
+                targetRatio: [2, 3],
+                hint: `Beker Biru = 2 unit, Beker Pink = 3 unit.`
+            },
+            {
+                type: 'choice',
+                badge: 'Misi 6: Soal Cerita Rasio',
+                title: `Ibu mencampur <strong><sup>3</sup>/<sub>4</sub> liter</strong> susu dan <strong><sup>1</sup>/<sub>2</sub> liter</strong> air. Berapa rasio susu terhadap air?`,
+                subtitle: `Pilih kristal jawaban yang benar.`,
+                options: ['2 : 3', '3 : 2', '3 : 4', '4 : 3'],
+                correctIndex: 1,
+                hint: `3/4 : 1/2 dikalikan 4 menghasilkan 3 : 2.`
+            },
+            {
+                type: 'mix',
+                badge: 'Misi 7: Keseimbangan 4:1',
+                title: `Ciptakan reaksi energi dengan rasio <strong>4 : 1</strong> !`,
+                subtitle: `Sesuaikan beker cairan biru dan pink.`,
+                targetRatio: [4, 1],
+                hint: `Biru = 4 unit, Pink = 1 unit.`
+            },
+            {
+                type: 'choice',
+                badge: 'Misi 8: Tantangan Akhir Master',
+                title: `Manakah rasio pecahan yang senilai dengan <strong><sup>5</sup>/<sub>6</sub> : <sup>2</sup>/<sub>3</sub></strong> ?`,
+                subtitle: `Pilih jawaban akhir di panel sensor!`,
+                options: ['4 : 5', '5 : 4', '10 : 12', '3 : 5'],
+                correctIndex: 1,
+                hint: `Kalikan 5/6 dan 2/3 dengan 6, menghasilkan 5 : 4.`
+            }
+        ];
+
+        let currentLevel = 0;
+        let score = 0;
+        let blueVal = 1;
+        let pinkVal = 1;
+        let isCameraMode = false;
+
+        /**************************************************************
+         * 3. GAMEPLAY CONTROLLER & UI UPDATES
+         **************************************************************/
+        function startGame(useCamera) {
+            isCameraMode = useCamera;
+            const startScreen = document.getElementById('start-screen');
+            if (startScreen) startScreen.style.display = 'none';
+
+            currentLevel = 0;
+            score = 0;
+            updateScoreDisplay();
+            loadCurrentLevel();
+
+            if (isCameraMode) {
+                initCameraSensor();
+            } else {
+                document.getElementById('gesture-badge').textContent = "Mode: Layar Sentuh / Papan Interaktif";
+            }
+            playTone(523.25, 'sine', 0.3);
+        }
+
+        function updateScoreDisplay() {
+            document.getElementById('score-display').textContent = score;
+            document.getElementById('level-display').textContent = `${currentLevel + 1}/${questions.length}`;
+        }
+
+        function loadCurrentLevel() {
+            if (currentLevel >= questions.length) {
+                showVictoryModal();
+                return;
+            }
+
+            const q = questions[currentLevel];
+            document.getElementById('mission-badge').textContent = q.badge;
+            document.getElementById('question-title').innerHTML = q.title;
+            document.getElementById('question-subtitle').textContent = q.subtitle;
+            document.getElementById('hint-box').classList.add('hidden');
+            document.getElementById('hint-box').textContent = q.hint;
+            document.getElementById('feedback-banner').classList.add('hidden');
+
+            const viewBeakers = document.getElementById('view-beakers');
+            const viewVisualGrid = document.getElementById('view-visual-grid');
+            const submitMix = document.getElementById('panel-submit-mix');
+            const choiceOrbs = document.getElementById('panel-choice-orbs');
+            const actionTitle = document.getElementById('action-panel-title');
+
+            if (q.type === 'mix') {
+                viewBeakers.classList.remove('hidden');
+                viewVisualGrid.classList.add('hidden');
+                submitMix.classList.remove('hidden');
+                choiceOrbs.classList.add('hidden');
+                actionTitle.innerHTML = `<i class="fa-solid fa-flask"></i> Panel Racikan Beker`;
+
+                blueVal = 1;
+                pinkVal = 1;
+                updateBeakersUI();
+            } else {
+                viewBeakers.classList.add('hidden');
+                viewVisualGrid.classList.remove('hidden');
+                submitMix.classList.add('hidden');
+                choiceOrbs.classList.remove('hidden');
+                choiceOrbs.className = "grid grid-cols-2 gap-3 w-full";
+                actionTitle.innerHTML = `<i class="fa-solid fa-crosshairs"></i> Panel Kristal Sensor`;
+
+                // Populate crystals
+                const crystalContainer = document.getElementById('crystal-container');
+                crystalContainer.innerHTML = '';
+                for(let i=0; i<6; i++) {
+                    const div = document.createElement('div');
+                    div.className = "w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 animate-pulse";
+                    div.innerHTML = `<i class="fa-solid fa-gem"></i>`;
+                    crystalContainer.appendChild(div);
+                }
+
+                // Populate Orbs
+                choiceOrbs.innerHTML = '';
+                q.options.forEach((opt, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = "interactive-target neon-btn p-4 rounded-2xl bg-slate-900 border-2 border-cyan-500/50 text-white font-cyber font-bold text-lg md:text-xl flex items-center justify-center gap-2 hover:border-cyan-300";
+                    btn.onclick = () => checkChoiceAnswer(idx);
+                    btn.innerHTML = `<span>${opt}</span>`;
+                    choiceOrbs.appendChild(btn);
+                });
+            }
+        }
+
+        function adjustPotion(color, delta) {
+            playTone(440, 'triangle', 0.08);
+            if (color === 'blue') {
+                blueVal = Math.max(1, Math.min(10, blueVal + delta));
+            } else {
+                pinkVal = Math.max(1, Math.min(10, pinkVal + delta));
+            }
+            updateBeakersUI();
+        }
+
+        function updateBeakersUI() {
+            document.getElementById('val-blue').textContent = blueVal;
+            document.getElementById('val-pink').textContent = pinkVal;
+
+            const hBlue = (blueVal / 10) * 100;
+            const hPink = (pinkVal / 10) * 100;
+
+            document.getElementById('liquid-blue').style.height = `${hBlue}%`;
+            document.getElementById('liquid-pink').style.height = `${hPink}%`;
+
+            document.getElementById('live-ratio-text').textContent = `${blueVal} : ${pinkVal}`;
+            document.getElementById('live-frac-text').textContent = `${blueVal}/${pinkVal}`;
+            document.getElementById('live-total-text').textContent = blueVal + pinkVal;
+        }
+
+        function showHint() {
+            playTone(660, 'sine', 0.15);
+            const box = document.getElementById('hint-box');
+            box.classList.toggle('hidden');
+        }
+
+        function checkBeakerAnswer() {
+            const q = questions[currentLevel];
+            const [targetB, targetP] = q.targetRatio;
+
+            // Check if reduced ratio matches target ratio
+            const userGCD = gcd(blueVal, pinkVal);
+            const targetGCD = gcd(targetB, targetP);
+
+            const reducedUser = [blueVal / userGCD, pinkVal / userGCD];
+            const reducedTarget = [targetB / targetGCD, targetP / targetGCD];
+
+            const isCorrect = (reducedUser[0] === reducedTarget[0] && reducedUser[1] === reducedTarget[1]);
+            handleAnswerFeedback(isCorrect);
+        }
+
+        function checkChoiceAnswer(selectedIndex) {
+            const q = questions[currentLevel];
+            const isCorrect = (selectedIndex === q.correctIndex);
+            handleAnswerFeedback(isCorrect);
+        }
+
+        function handleAnswerFeedback(isCorrect) {
+            const banner = document.getElementById('feedback-banner');
+            banner.classList.remove('hidden');
+
+            if (isCorrect) {
+                playTone(783.99, 'sine', 0.3);
+                score += 150;
+                updateScoreDisplay();
+                banner.className = "mt-3 p-3 rounded-2xl text-center font-bold text-sm md:text-base bg-emerald-500/20 border-2 border-emerald-400 text-emerald-300";
+                banner.innerHTML = `<i class="fa-solid fa-circle-check mr-2"></i> Benar! Energi Lab Berhasil Disinkronkan (+150 Poin)`;
+
+                setTimeout(() => {
+                    currentLevel++;
+                    loadCurrentLevel();
+                }, 1600);
+            } else {
+                playTone(220, 'sawtooth', 0.3);
+                banner.className = "mt-3 p-3 rounded-2xl text-center font-bold text-sm md:text-base bg-pink-500/20 border-2 border-pink-500 text-pink-300";
+                banner.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i> Belum Tepat! Periksa kembali rasio atau gunakan tombol Bantuan.`;
+            }
+        }
+
+        function gcd(a, b) {
+            return b === 0 ? a : gcd(b, a % b);
+        }
+
+        function showVictoryModal() {
+            playTone(880, 'sine', 0.5);
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        function resetGame() {
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('start-screen').style.display = 'flex';
+        }
+
+        /**************************************************************
+         * 4. SENSOR SYSTEM (TOUCH, MOUSE & MEDIAPIPE CAMERA HAND TRACKING)
+         ********************************------------------------------*/
+        const fxCanvas = document.getElementById('fx-canvas');
+        const fxCtx = fxCanvas.getContext('2d');
+        const cursor = document.getElementById('virtual-cursor');
+        const dwellCircle = document.getElementById('dwell-circle');
+
+        let pointerX = -100;
+        let pointerY = -100;
+        let particles = [];
+        let hoveredTarget = null;
+        let dwellStartTime = 0;
+        const DWELL_TIME = 1200; // 1.2 seconds for dwell click
+
+        function resizeFxCanvas() {
+            fxCanvas.width = window.innerWidth;
+            fxCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeFxCanvas);
+        resizeFxCanvas();
+
+        function addParticle(x, y, color = '#00f3ff') {
+            particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 3,
+                vy: (Math.random() - 0.5) * 3,
+                alpha: 1,
+                size: 3 + Math.random() * 3,
+                color
+            });
+        }
+
+        function updatePointer(x, y) {
+            pointerX = x;
+            pointerY = y;
+            cursor.style.left = `${x}px`;
+            cursor.style.top = `${y}px`;
+
+            addParticle(x, y, isCameraMode ? '#00ff66' : '#00f3ff');
+
+            const elementUnder = document.elementFromPoint(x, y);
+            const target = elementUnder ? elementUnder.closest('.interactive-target') : null;
+
+            if (hoveredTarget && hoveredTarget !== target) {
+                hoveredTarget.classList.remove('sensor-hover');
+                hoveredTarget = null;
+                dwellStartTime = 0;
+                dwellCircle.style.strokeDasharray = `0, 100`;
+            }
+
+            if (target) {
+                if (hoveredTarget !== target) {
+                    hoveredTarget = target;
+                    hoveredTarget.classList.add('sensor-hover');
+                    dwellStartTime = performance.now();
+                    playTone(523.25, 'triangle', 0.05);
+                }
+
+                const elapsed = performance.now() - dwellStartTime;
+                const progress = Math.min(100, (elapsed / DWELL_TIME) * 100);
+                dwellCircle.style.strokeDasharray = `${progress}, 100`;
+
+                if (elapsed >= DWELL_TIME) {
+                    dwellStartTime = performance.now();
+                    hoveredTarget.click();
+                    playTone(659.25, 'sine', 0.1);
+                }
+            } else {
+                dwellCircle.style.strokeDasharray = `0, 100`;
+            }
+        }
+
+        window.addEventListener('pointermove', (e) => {
+            if (!isCameraMode) {
+                updatePointer(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('pointerdown', (e) => {
+            for(let i=0; i<12; i++) {
+                addParticle(e.clientX, e.clientY, '#ff007f');
+            }
+        });
+
+        // FX Render Loop
+        function renderFX() {
+            fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.03;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                fxCtx.save();
+                fxCtx.globalAlpha = p.alpha;
+                fxCtx.fillStyle = p.color;
+                fxCtx.shadowColor = p.color;
+                fxCtx.shadowBlur = 8;
+                fxCtx.beginPath();
+                fxCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                fxCtx.fill();
+                fxCtx.restore();
+            }
+            requestAnimationFrame(renderFX);
+        }
+        renderFX();
+
+        /**************************************************************
+         * 5. MEDIAPIPE HAND TRACKING INTEGRATION
+         **************************************************************/
+        let handsInstance = null;
+        let cameraInstance = null;
+        const videoEl = document.getElementById('webcam-video');
+        const sensorCanvas = document.getElementById('sensor-hud-canvas');
+        const sensorCtx = sensorCanvas.getContext('2d');
+
+        async function initCameraSensor() {
+            document.getElementById('gesture-badge').textContent = "Mode: Kamera AI Hand-Tracking Aktif";
+            document.getElementById('radar-overlay-info').classList.add('hidden');
+            sensorCanvas.classList.remove('hidden');
+
+            try {
+                if (!window.Hands) {
+                    // Load MediaPipe dynamically if not present
+                    await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js");
+                    await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js");
+                    await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js");
+                }
+
+                handsInstance = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                handsInstance.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.65
+                });
+
+                handsInstance.onResults(onHandResults);
+
+                cameraInstance = new Camera(videoEl, {
+                    onFrame: async () => {
+                        if (isCameraMode && handsInstance) {
+                            await handsInstance.send({ image: videoEl });
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                await cameraInstance.start();
+            } catch (err) {
+                console.error("Camera sensor error:", err);
+                document.getElementById('gesture-badge').textContent = "Kamera tidak tersedia. Menggunakan Touch / Mouse.";
+            }
+        }
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.crossOrigin = "anonymous";
+                s.onload = resolve;
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        }
+
+        function onHandResults(results) {
+            sensorCanvas.width = videoEl.videoWidth || 640;
+            sensorCanvas.height = videoEl.videoHeight || 480;
+
+            sensorCtx.save();
+            sensorCtx.clearRect(0, 0, sensorCanvas.width, sensorCanvas.height);
+            sensorCtx.drawImage(results.image, 0, 0, sensorCanvas.width, sensorCanvas.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                if (window.drawConnectors && window.drawLandmarks) {
+                    drawConnectors(sensorCtx, landmarks, HAND_CONNECTIONS, { color: '#00f3ff', lineWidth: 3 });
+                    drawLandmarks(sensorCtx, landmarks, { color: '#00ff66', lineWidth: 2, radius: 3 });
+                }
+
+                // Index fingertip is landmark 8
+                const indexTip = landmarks[8];
+                const screenX = (1 - indexTip.x) * window.innerWidth;
+                const screenY = indexTip.y * window.innerHeight;
+
+                updatePointer(screenX, screenY);
+            }
+            sensorCtx.restore();
+        }
+    </script>
+</body>
+</html>
